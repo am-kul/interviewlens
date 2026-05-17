@@ -1,6 +1,6 @@
 import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
-import { randomBytes } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -28,7 +28,34 @@ const OUTPUT_CONFIG = {
   },
 };
 
-const activeSessions = new Set();
+const SESSION_TTL = 30 * 24 * 60 * 60; // seconds, matches cookie Max-Age
+
+function signToken(exp) {
+  const { AUTH_USERNAME, AUTH_PASSWORD, SESSION_SECRET } = process.env;
+  const payload = `${AUTH_USERNAME}:${AUTH_PASSWORD}:${exp}`;
+  return createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+}
+
+function createSessionToken() {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL;
+  return `${exp}.${signToken(exp)}`;
+}
+
+function isValidToken(token) {
+  const { AUTH_USERNAME, AUTH_PASSWORD, SESSION_SECRET } = process.env;
+  if (!AUTH_USERNAME || !AUTH_PASSWORD || !SESSION_SECRET) return false;
+  const dot = token.indexOf(".");
+  if (dot === -1) return false;
+  const exp = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  if (parseInt(exp, 10) < Math.floor(Date.now() / 1000)) return false;
+  const expected = signToken(parseInt(exp, 10));
+  try {
+    return timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
 
 function getAuthCookie(req) {
   const header = req.headers.cookie || "";
@@ -38,7 +65,7 @@ function getAuthCookie(req) {
 
 function isAuthenticated(req) {
   const cookie = getAuthCookie(req);
-  return cookie !== null && activeSessions.has(cookie);
+  return cookie !== null && isValidToken(cookie);
 }
 
 function loginHTML(errorMsg = "") {
@@ -116,9 +143,7 @@ app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
   if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
-    const sessionToken = randomBytes(32).toString("hex");
-    activeSessions.add(sessionToken);
-    res.setHeader("Set-Cookie", `auth=${sessionToken}; ${COOKIE_ATTRS}; Max-Age=2592000`);
+    res.setHeader("Set-Cookie", `auth=${createSessionToken()}; ${COOKIE_ATTRS}; Max-Age=${SESSION_TTL}`);
     return res.redirect("/");
   }
 
@@ -126,8 +151,6 @@ app.post("/login", (req, res) => {
 });
 
 app.post("/logout", (req, res) => {
-  const cookie = getAuthCookie(req);
-  if (cookie) activeSessions.delete(cookie);
   res.setHeader("Set-Cookie", `auth=; ${COOKIE_ATTRS}; Max-Age=0`);
   res.redirect("/login");
 });
