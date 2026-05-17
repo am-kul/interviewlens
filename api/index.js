@@ -8,6 +8,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const client = new Anthropic();
 
+const COOKIE_ATTRS = "HttpOnly; SameSite=Lax; Path=/";
+
+const OUTPUT_CONFIG = {
+  format: {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: ["questions"],
+      additionalProperties: false,
+    },
+  },
+};
+
 function makeToken() {
   const { AUTH_USERNAME, AUTH_PASSWORD, SESSION_SECRET } = process.env;
   if (!AUTH_USERNAME || !AUTH_PASSWORD || !SESSION_SECRET) return null;
@@ -16,6 +35,8 @@ function makeToken() {
     .digest("hex");
 }
 
+const _token = makeToken();
+
 function getAuthCookie(req) {
   const header = req.headers.cookie || "";
   const pair = header.split(";").map((c) => c.trim()).find((c) => c.startsWith("auth="));
@@ -23,8 +44,7 @@ function getAuthCookie(req) {
 }
 
 function isAuthenticated(req) {
-  const token = makeToken();
-  return token !== null && getAuthCookie(req) === token;
+  return _token !== null && getAuthCookie(req) === _token;
 }
 
 function loginHTML(errorMsg = "") {
@@ -101,16 +121,8 @@ app.post("/login", (req, res) => {
   const { AUTH_USERNAME, AUTH_PASSWORD } = process.env;
   const { username, password } = req.body;
 
-  if (!AUTH_USERNAME || !AUTH_PASSWORD || !process.env.SESSION_SECRET) {
-    return res.status(500).send(loginHTML("Server misconfiguration: missing environment variables."));
-  }
-
   if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
-    const token = makeToken();
-    res.setHeader(
-      "Set-Cookie",
-      `auth=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`
-    );
+    res.setHeader("Set-Cookie", `auth=${_token}; ${COOKIE_ATTRS}; Max-Age=2592000`);
     return res.redirect("/");
   }
 
@@ -118,7 +130,7 @@ app.post("/login", (req, res) => {
 });
 
 app.post("/logout", (req, res) => {
-  res.setHeader("Set-Cookie", "auth=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  res.setHeader("Set-Cookie", `auth=; ${COOKIE_ATTRS}; Max-Age=0`);
   res.redirect("/login");
 });
 
@@ -127,8 +139,9 @@ app.use(express.static(join(__dirname, "..", "public")));
 
 app.post("/api/questions", async (req, res) => {
   const { jobTitle } = req.body;
+  const title = typeof jobTitle === "string" ? jobTitle.trim() : "";
 
-  if (!jobTitle || typeof jobTitle !== "string" || !jobTitle.trim()) {
+  if (!title) {
     return res.status(400).json({ error: "A job title is required." });
   }
 
@@ -141,29 +154,18 @@ app.post("/api/questions", async (req, res) => {
       messages: [
         {
           role: "user",
-          content: `Generate 3 interview questions for a ${jobTitle.trim()} role.`,
+          content: `Generate 3 interview questions for a ${title} role.`,
         },
       ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              questions: {
-                type: "array",
-                items: { type: "string" },
-              },
-            },
-            required: ["questions"],
-            additionalProperties: false,
-          },
-        },
-      },
+      output_config: OUTPUT_CONFIG,
     });
 
-    const text = response.content.find((b) => b.type === "text")?.text ?? "{}";
-    const { questions } = JSON.parse(text);
+    const block = response.content.find((b) => b.type === "text");
+    if (!block) throw new Error("No text block in API response");
+    const { questions } = JSON.parse(block.text);
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("Unexpected response format from API");
+    }
     res.json({ questions });
   } catch (err) {
     console.error(err);
