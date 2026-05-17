@@ -250,12 +250,19 @@
         }
 
         questionsHeading.textContent = `Interview questions for: ${jobTitle}`;
-        questionsList.innerHTML = data.questions
-          .map(
-            (q, i) =>
-              `<li><span class="num">${i + 1}</span><span class="question-text">${q}</span></li>`
-          )
-          .join("");
+        questionsList.innerHTML = "";
+        data.questions.forEach((q, i) => {
+          const li = document.createElement("li");
+          const num = document.createElement("span");
+          num.className = "num";
+          num.textContent = i + 1;
+          const text = document.createElement("span");
+          text.className = "question-text";
+          text.textContent = q;
+          li.appendChild(num);
+          li.appendChild(text);
+          questionsList.appendChild(li);
+        });
         questionsSection.classList.add("visible");
       } catch (err) {
         showError(err.message || "Something went wrong. Please try again.");
