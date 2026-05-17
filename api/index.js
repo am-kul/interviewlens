@@ -168,7 +168,7 @@ app.post("/api/questions", async (req, res) => {
 
   try {
     const response = await client.messages.create({
-      model: "claude-opus-4-7",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       system:
         'You are an expert interviewer. When given a job title, generate exactly 3 thoughtful, role-specific interview questions that reveal a candidate\'s depth of experience, problem-solving ability, and cultural fit. Return ONLY a JSON object with a single key "questions" whose value is an array of exactly 3 strings. No extra text.',
