@@ -27,10 +27,35 @@
       max-width: 600px;
     }
 
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.4rem;
+    }
+
     h1 {
       font-size: 1.6rem;
       font-weight: 700;
-      margin-bottom: 0.4rem;
+    }
+
+    .logout-btn {
+      background: transparent;
+      color: #6b7280;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .logout-btn:hover {
+      background: #f3f4f6;
+      color: #1f2937;
+      border-color: #9ca3af;
     }
 
     .subtitle {
@@ -173,7 +198,12 @@
 </head>
 <body>
   <div class="card">
-    <h1>InterviewLens</h1>
+    <div class="header">
+      <h1>InterviewLens</h1>
+      <form method="POST" action="/logout" style="margin:0;">
+        <button type="submit" class="logout-btn">Log out</button>
+      </form>
+    </div>
     <p class="subtitle">Enter a job title to generate 3 tailored interview questions.</p>
 
     <label for="jobTitle">Job Title</label>
